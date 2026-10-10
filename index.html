@@ -63,6 +63,28 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
+
+    #status {
+      display: none;
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    #status.success {
+      display: block;
+      background: #e6f4ea;
+      color: #1e7e34;
+    }
+
+    #status.error {
+      display: block;
+      background: #fdecea;
+      color: #b3261e;
+    }
   </style>
 </head>
 <body>
@@ -86,6 +108,8 @@
 
   <button type="button" onclick="submitSelection()">Confirm & Submit</button>
 
+  <div id="status" role="status" aria-live="polite"></div>
+
   <script>
     const tg = window.Telegram?.WebApp;
     if (tg) {
@@ -96,12 +120,38 @@
     const N8N_WEBHOOK_URL = "https://adamsses.app.n8n.cloud/webhook/92763029-bb43-4a04-af59-a5a88e15f60b";
 
     function closeWindow() {
-      if (tg && typeof tg.close === 'function') {
-        tg.close();
-      }
+      try {
+        if (tg && typeof tg.close === 'function') {
+          tg.close();
+        }
+      } catch (e) {}
       setTimeout(() => {
         window.close();
       }, 100);
+    }
+
+    // Telegram popups only work inside a real Mini App (v6.2+). When the page is
+    // opened from a normal link button, tg.showAlert() throws, which used to hide
+    // the success message. Fall back to a browser alert in that case.
+    function canUseTgPopup() {
+      return !!(tg && tg.initData && typeof tg.isVersionAtLeast === 'function' && tg.isVersionAtLeast('6.2'));
+    }
+
+    function notify(message, callback) {
+      if (canUseTgPopup()) {
+        try {
+          tg.showAlert(message, callback);
+          return;
+        } catch (e) {}
+      }
+      try { alert(message); } catch (e) {}
+      if (callback) callback();
+    }
+
+    function setStatus(message, type) {
+      const el = document.getElementById('status');
+      el.textContent = message;
+      el.className = type;
     }
 
     async function submitSelection() {
@@ -110,11 +160,7 @@
       const selectedValues = Array.from(selectedBoxes).map(cb => cb.value);
 
       if (selectedValues.length === 0) {
-        if (tg && tg.showAlert) {
-          tg.showAlert("Please select at least one option.");
-        } else {
-          alert("Please select at least one option.");
-        }
+        notify("Please select at least one option.");
         return;
       }
 
@@ -139,31 +185,22 @@
         });
 
         if (response.ok) {
-          if (tg && tg.showAlert) {
-            tg.showAlert("Success! Options submitted.", () => {
-              closeWindow();
-            });
-          } else {
-            alert("Success! Options submitted.");
+          submitBtn.innerText = "Submitted ✓";
+          setStatus("✅ Success! Options submitted. You can close this page.", "success");
+          notify("Success! Options submitted.", () => {
             closeWindow();
-          }
+          });
         } else {
-          if (tg && tg.showAlert) {
-            tg.showAlert("Failed to submit. Server returned error.");
-          } else {
-            alert("Failed to submit. Server returned error.");
-          }
           submitBtn.innerText = "Confirm & Submit";
           submitBtn.disabled = false;
+          setStatus("Failed to submit. Server returned error.", "error");
+          notify("Failed to submit. Server returned error.");
         }
       } catch (err) {
-        if (tg && tg.showAlert) {
-          tg.showAlert("Error sending request: " + err.message);
-        } else {
-          alert("Error sending request: " + err.message);
-        }
         submitBtn.innerText = "Confirm & Submit";
         submitBtn.disabled = false;
+        setStatus("Error sending request: " + err.message, "error");
+        notify("Error sending request: " + err.message);
       }
     }
   </script>
